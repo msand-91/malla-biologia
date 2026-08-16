@@ -94,7 +94,9 @@ const mallaModificada = () =>
   !!(S.mods.orden && S.mods.orden.length);
 
 const est = id => S.estado[id] || 'pendiente';
-const aprobada = id => est(id) === 'aprobada';
+/* «homologada» (validada, exenta o reconocida) cuenta como aprobada para todo:
+   requisitos, créditos y avance. Solo se distingue en la tarjeta y la ficha. */
+const aprobada = id => est(id) === 'aprobada' || est(id) === 'homologada';
 const creditos = a => (S.ranuras[a.id] && S.ranuras[a.id].cr) || a.cr;
 
 /* ------------------------------------------- disponibilidad / prerrequisitos */
@@ -149,7 +151,7 @@ function calcularDisponibilidad() {
   for (const a of PLAN) {
     const coOk = (a.co || []).every(c => hechas.has(c) || prePasa[c]);
     const e = est(a.id);
-    if (e === 'aprobada') res[a.id] = 'aprobada';
+    if (e === 'aprobada' || e === 'homologada') res[a.id] = e;
     else if (e === 'cursando') res[a.id] = 'cursando';
     else res[a.id] = (prePasa[a.id] && coOk) ? 'disponible' : 'bloqueada';
   }
@@ -286,7 +288,7 @@ function metricas() {
     // Los componentes con noCuenta (nivelación) no suman al total del plan.
     const cuenta = !(COMPONENTES[a.comp] && COMPONENTES[a.comp].noCuenta);
     r.comp[a.comp].plan += c;
-    if (e === 'aprobada') { r.comp[a.comp].hecho += c; if (cuenta) r.total.hecho += c; }
+    if (e === 'aprobada' || e === 'homologada') { r.comp[a.comp].hecho += c; if (cuenta) r.total.hecho += c; }
     else if (e === 'cursando') { r.comp[a.comp].cursando += c; if (cuenta) r.total.cursando += c; }
   }
   r.total.plan = PLAN.filter(a => !(COMPONENTES[a.comp] && COMPONENTES[a.comp].noCuenta)).reduce((s, a) => s + creditos(a), 0);
@@ -362,9 +364,9 @@ function cadenaRelacionada(id) {
 }
 
 function tarjeta(a, e, rel, ed) {
-  const etq = { aprobada: 'Aprobada', cursando: 'Cursando', disponible: 'Disponible', bloqueada: '' }[e];
+  const etq = { aprobada: 'Aprobada', homologada: 'Homologada', cursando: 'Cursando', disponible: 'Disponible', bloqueada: '' }[e];
   const asig = S.ranuras[a.id];
-  const clases = ['card', e];
+  const clases = ['card', e === 'homologada' ? 'aprobada homologada' : e];
   if (rel) clases.push(rel.has(a.id) ? 'resaltada' : 'atenuada');
   if (ed) clases.push('arrastrable');
   if (a.sem !== semOriginal(a.id)) clases.push('movida');
@@ -711,6 +713,7 @@ function abrirDetalle(id) {
           <button data-v="pendiente" aria-pressed="${est(id) === 'pendiente'}">Pendiente</button>
           <button data-v="cursando"  aria-pressed="${est(id) === 'cursando'}">Cursando</button>
           <button data-v="aprobada"  aria-pressed="${est(id) === 'aprobada'}">Aprobada</button>
+          <button data-v="homologada" aria-pressed="${est(id) === 'homologada'}" title="Validada, exenta o reconocida: cuenta como aprobada">Homologada / exenta</button>
         </div>
       </div>
       ${opciones}
@@ -1231,8 +1234,27 @@ const HORA_INI = 6, HORA_FIN = 22;
 const PALETA_HOR = ['#2563c4', '#2f8f5b', '#b8860b', '#8e44ad', '#c0392b', '#16a085', '#d35400', '#7f8c8d', '#c2185b', '#455a64'];
 const minutos = h => { const [a, b] = String(h).split(':').map(Number); return a * 60 + (b || 0); };
 
+/* --- Escenarios: varios horarios guardados (A, B, C…) para comparar -------- */
+/* S.horario = { activo, escenarios: [{ nombre, extras, grupos }] }. Las versiones
+   anteriores guardaban { extras, grupos } a secas: se migran al vuelo.        */
+function normalizarHorario() {
+  const h = S.horario || {};
+  if (!Array.isArray(h.escenarios) || !h.escenarios.length) {
+    S.horario = { activo: 0, escenarios: [{ nombre: 'Horario A', extras: h.extras || [], grupos: h.grupos || {} }] };
+  }
+  const H = S.horario;
+  if (typeof H.activo !== 'number' || H.activo < 0 || H.activo >= H.escenarios.length) H.activo = 0;
+  for (const e of H.escenarios) { e.extras = e.extras || []; e.grupos = e.grupos || {}; e.nombre = e.nombre || 'Horario'; }
+  return H.escenarios[H.activo];
+}
+/** Escenario activo (extras y grupos elegidos). */
+const HOR = () => normalizarHorario();
+const letraEscenario = i => 'Horario ' + String.fromCharCode(65 + (i % 26));
+/* Estado de interfaz de la pestaña (no se guarda). */
+const HOR_UI = { comparar: false, optimizando: false };
+
 /** Asignaturas que entran en el horario: las "cursando" con oferta + las añadidas a mano. */
-function asignaturasHorario() {
+function asignaturasHorario(esc_ = HOR()) {
   const vistas = new Set(), out = [];
   const meter = (cod, origen, asig) => {
     const o = ofertaDe(cod); const c = codBase(cod);
@@ -1241,25 +1263,25 @@ function asignaturasHorario() {
     out.push({ cod: c, oferta: o, origen, asig });
   };
   PLAN.filter(a => est(a.id) === 'cursando').forEach(a => meter(codDe(a), 'cursando', a));
-  (S.horario.extras || []).forEach(c => meter(c, 'extra', PLAN.find(a => codBase(codDe(a)) === codBase(c)) || null));
+  (esc_.extras || []).forEach(c => meter(c, 'extra', PLAN.find(a => codBase(codDe(a)) === codBase(c)) || null));
   return out;
 }
 
 /** Grupo elegido para una actividad (o el único, si solo hay uno). */
-function grupoElegido(cod, act) {
+function grupoElegido(cod, act, esc_ = HOR()) {
   const clave = cod + '|' + act.nombre;
-  const g = act.grupos.find(x => x.codigoGrupo === S.horario.grupos[clave]);
+  const g = act.grupos.find(x => x.codigoGrupo === esc_.grupos[clave]);
   if (g) return g;
   return act.grupos.length === 1 ? act.grupos[0] : null;
 }
 
 /** Sesiones de todo lo elegido, con sus cruces marcados. */
-function sesionesHorario(items) {
+function sesionesHorario(items, esc_ = HOR()) {
   const ses = [];
   items.forEach((it, i) => {
     const color = it.asig && COMPONENTES[it.asig.comp] ? COMPONENTES[it.asig.comp].color : PALETA_HOR[i % PALETA_HOR.length];
     it.oferta.actividades.forEach(act => {
-      const g = grupoElegido(it.cod, act);
+      const g = grupoElegido(it.cod, act, esc_);
       if (!g) return;
       g.sesiones.forEach(x => {
         if (!x.dia || !x.inicio || !x.fin) return;
@@ -1349,7 +1371,7 @@ function buscarHuecos(items, ses) {
     if (HUECOS.maxCr && o.creditos > +HUECOS.maxCr) continue;
     if (q && !sinTildes(o.nombre + ' ' + o.cod + ' ' + (o.descripcion || '')).includes(q)) continue;
     const cl = clasificarOferta(o.cod, disp, hechas);
-    if (cl.estado === 'aprobada' || cl.estado === 'cursando') continue;
+    if (cl.estado === 'aprobada' || cl.estado === 'homologada' || cl.estado === 'cursando') continue;
     if (HUECOS.tipo !== 'todas' && cl.tipo !== HUECOS.tipo) continue;
     if (cl.estado === 'bloqueada' && !HUECOS.incluirBloqueadas) continue;
     const combo = combinacionQueCabe(o, ses, HUECOS.soloCupos);
@@ -1408,6 +1430,158 @@ function panelHuecos(items, ses) {
   </div>`;
 }
 
+/** Métricas de un conjunto de sesiones: días con clase, huecos, primera y última hora. */
+function metricasHorario(ses) {
+  const porDia = {};
+  for (const x of ses) (porDia[x.dia] = porDia[x.dia] || []).push([x.ini, x.fin]);
+  let huecos = 0, inicio = Infinity, fin = -Infinity;
+  for (const d in porDia) {
+    const iv = porDia[d].sort((a, b) => a[0] - b[0]);
+    let t = iv[0][1]; inicio = Math.min(inicio, iv[0][0]);
+    for (const [i, f] of iv.slice(1)) { if (i > t) huecos += i - t; t = Math.max(t, f); }
+    fin = Math.max(fin, t);
+  }
+  return { dias: Object.keys(porDia).length, huecos, inicio: ses.length ? inicio : null, fin: ses.length ? fin : null,
+    cruces: ses.filter(x => x.choque).length, franjas: ses.length };
+}
+const horasTexto = m => `${Math.floor(m / 60)}h${m % 60 ? String(m % 60).padStart(2, '0') : ''}`;
+
+/** La cuadrícula de la semana para un conjunto de sesiones. */
+function semanaHTML(ses) {
+  const horas = []; for (let h = HORA_INI; h < HORA_FIN; h++) horas.push(`<div>${h}:00</div>`);
+  const dias = [1, 2, 3, 4, 5, 6].map(d => {
+    const bloques = ses.filter(x => x.dia === d).map(x => {
+      const top = (x.ini - HORA_INI * 60) / 60, alto = (x.fin - x.ini) / 60;
+      return `<div class="hor-bloque ${x.choque ? 'choque' : ''}" style="top:calc(${top} * var(--hora-alto));height:calc(${alto} * var(--hora-alto) - 2px);background:${x.color}" title="${esc(x.nombre)} · ${esc(x.grupo)}${x.salon ? ' · ' + esc(x.salon) : ''}">
+        <b>${esc(x.nombre)}</b><small>${esc(x.grupo)}${x.salon ? ' · ' + esc(x.salon) : ''}</small></div>`;
+    }).join('');
+    return `<div class="dia" style="height:calc(${HORA_FIN - HORA_INI} * var(--hora-alto))">${bloques}</div>`;
+  }).join('');
+  return `<div class="hor-semana">
+      <div class="cab"></div>${[1, 2, 3, 4, 5, 6].map(d => `<div class="cab">${DIAS_CORTOS[d]}</div>`).join('')}
+      <div class="horas">${horas.join('')}</div>${dias}
+    </div>`;
+}
+
+/** Barra de escenarios: pestañas A/B/C…, nuevo, duplicar, renombrar, eliminar, comparar. */
+function barraEscenarios() {
+  const H = S.horario;
+  return `<div class="hor-escenarios">
+    ${H.escenarios.map((e, i) => `<button class="esc ${i === H.activo && !HOR_UI.comparar ? 'activo' : ''}" data-esc="${i}" title="${esc(e.nombre)}">${esc(e.nombre)}</button>`).join('')}
+    <button class="esc ${HOR_UI.comparar ? 'activo' : ''}" data-esc-comparar ${H.escenarios.length < 2 ? 'disabled title="Crea otro horario para comparar"' : ''}>⇄ Comparar</button>
+    <span class="crece"></span>
+    <button class="btn" data-esc-nuevo title="Horario vacío">+ Nuevo</button>
+    <button class="btn" data-esc-duplicar title="Copia del horario activo">Duplicar</button>
+    <button class="btn" data-esc-renombrar>Renombrar</button>
+    <button class="btn" data-esc-eliminar ${H.escenarios.length < 2 ? 'disabled' : ''}>Eliminar</button>
+  </div>`;
+}
+
+/** Vista de comparación: una tabla con las métricas de cada escenario y sus semanas. */
+function vistaComparar() {
+  const filas = S.horario.escenarios.map((e, i) => {
+    const items = asignaturasHorario(e), ses = sesionesHorario(items, e), m = metricasHorario(ses);
+    const cr = items.reduce((n, it) => n + (it.oferta.creditos || 0), 0);
+    return { e, i, items, ses, m, cr };
+  });
+  const celda = (f, k) => f.m[k] == null ? '—' : k === 'inicio' || k === 'fin' ? hhmm(f.m[k]) : k === 'huecos' ? horasTexto(f.m[k]) : f.m[k];
+  return `<div class="panel">
+    <h3>Comparar horarios <span class="hint">— ${filas.length} escenarios</span></h3>
+    <div class="tabla-scroll"><table class="tabla hor-comparar"><thead><tr>
+      <th></th><th>Asignaturas</th><th>Créditos</th><th>Franjas</th><th>Días con clase</th><th>Huecos</th><th>Empieza</th><th>Termina</th><th>Cruces</th></tr></thead><tbody>
+      ${filas.map(f => `<tr class="${f.i === S.horario.activo ? 'activo' : ''}"><td><b>${esc(f.e.nombre)}</b><div class="meta">${f.items.map(it => esc(it.oferta.nombre)).join(' · ') || 'vacío'}</div></td>
+        <td class="num">${f.items.length}</td><td class="num">${f.cr}</td><td class="num">${f.m.franjas}</td><td class="num">${f.m.dias}</td><td class="num">${celda(f, 'huecos')}</td><td class="num">${celda(f, 'inicio')}</td><td class="num">${celda(f, 'fin')}</td>
+        <td class="num ${f.m.cruces ? 'hor-choque' : ''}">${f.m.cruces}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="hor-comparar-semanas">${filas.map(f => `<div><h4>${esc(f.e.nombre)} <button class="btn" data-esc="${f.i}" style="font-size:11px;padding:2px 8px">abrir</button></h4>${f.ses.length ? semanaHTML(f.ses) : '<div class="hor-vacio">Sin grupos elegidos.</div>'}</div>`).join('')}</div>
+  </div>`;
+}
+
+/* --- Optimizador: la mejor combinación de grupos para las materias elegidas --- */
+const OPT = { objetivo: 'dias', desde: '', hasta: '', soloCupos: true, resultados: null, parcial: false, mensaje: '' };
+const OPT_TOPE_NODOS = 150000, OPT_TOP = 5;
+
+/** Explora las combinaciones de grupos (uno por actividad de cada asignatura)
+    sin cruces y devuelve las mejores según OPT.objetivo. */
+function optimizarHorario(items) {
+  const desde = OPT.desde ? minutos(OPT.desde) : 0, hasta = OPT.hasta ? minutos(OPT.hasta) : 24 * 60;
+  const unidades = [], sinOpcion = [];
+  for (const it of items) for (const act of it.oferta.actividades) {
+    if (!act.grupos.length) continue;
+    const grupos = act.grupos.map(g => ({ g, ses: sesionesDe(g) }))
+      .filter(x => x.ses.length && (!OPT.soloCupos || x.g.cupos) && x.ses.every(y => y.ini >= desde && y.fin <= hasta));
+    if (!grupos.length) sinOpcion.push(`${it.oferta.nombre}${it.oferta.actividades.length > 1 ? ' (' + act.nombre.replace(/\s*\(.*$/, '') + ')' : ''}`);
+    unidades.push({ cod: it.cod, nombre: it.oferta.nombre, act, grupos });
+  }
+  if (!unidades.length) return { mejores: [], sinOpcion, nodos: 0, parcial: false };
+  if (sinOpcion.length) return { mejores: [], sinOpcion, nodos: 0, parcial: false };
+  unidades.sort((a, b) => a.grupos.length - b.grupos.length);   // lo más restringido primero
+  const puntuar = ses => {
+    const m = metricasHorario(ses);
+    const claves = { dias: [m.dias, m.huecos, -m.inicio], huecos: [m.huecos, m.dias, -m.inicio], tarde: [-m.inicio, m.huecos, m.dias], temprano: [m.fin, m.huecos, m.dias] };
+    return { m, clave: claves[OPT.objetivo] || claves.dias };
+  };
+  const mejor = (a, b) => { for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i]; return 0; };
+  const top = []; let nodos = 0, parcial = false;
+  const elegidos = [];
+  const dfs = (i, ses) => {
+    if (nodos++ > OPT_TOPE_NODOS) { parcial = true; return; }
+    if (i === unidades.length) {
+      const { m, clave } = puntuar(ses);
+      const firma = elegidos.map(x => x.g.codigoGrupo).join(',');
+      if (top.some(t => t.firma === firma)) return;
+      // Variedad: como mucho dos propuestas con exactamente las mismas métricas.
+      const cm = clave.join('/');
+      if (top.filter(t => t.clave.join('/') === cm).length >= 2) return;
+      top.push({ clave, m, firma, eleccion: unidades.map((u, k) => ({ u, g: elegidos[k].g })) });
+      top.sort((a, b) => mejor(a.clave, b.clave));
+      if (top.length > OPT_TOP) top.pop();
+      return;
+    }
+    for (const x of unidades[i].grupos) {
+      if (x.ses.some(y => cruza(y, ses))) continue;
+      elegidos[i] = x;
+      dfs(i + 1, ses.concat(x.ses));
+      if (parcial) return;
+    }
+  };
+  dfs(0, []);
+  return { mejores: top, sinOpcion, nodos, parcial };
+}
+
+function panelOptimizar(items) {
+  const r = OPT.resultados;
+  const objetivos = { dias: 'Menos días con clase', huecos: 'Menos huecos entre clases', tarde: 'Empezar lo más tarde posible', temprano: 'Terminar lo más temprano posible' };
+  return `<div class="panel hor-optimizar">
+    <h3>Optimizar este horario <span class="hint">— prueba las combinaciones de grupos de tus ${items.length} asignatura${items.length === 1 ? '' : 's'} y propone las mejores sin cruces</span></h3>
+    <div class="toolbar hueco-filtros">
+      <label>Objetivo <select data-opt-f="objetivo">${Object.entries(objetivos).map(([k, v]) => `<option value="${k}" ${OPT.objetivo === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+      <label>No antes de <input type="time" data-opt-f="desde" value="${esc(OPT.desde)}"></label>
+      <label>Ni después de <input type="time" data-opt-f="hasta" value="${esc(OPT.hasta)}"></label>
+      <label><input type="checkbox" data-opt-f="soloCupos" ${OPT.soloCupos ? 'checked' : ''}> Solo grupos con cupos</label>
+      <button class="btn primario" data-opt-buscar ${items.length ? '' : 'disabled'}>Buscar la mejor combinación</button>
+    </div>
+    ${!r ? '<div class="meta">Las asignaturas son las que ya están en este horario (cursando + añadidas). Los grupos que tengas elegidos no importan: se prueban todos.</div>' : ''}
+    ${r && r.sinOpcion.length ? `<div class="aviso malo">Con esos límites no queda ningún grupo con horario para: ${r.sinOpcion.map(esc).join(', ')}. Amplía la ventana horaria o quita «solo con cupos».</div>` : ''}
+    ${r && !r.sinOpcion.length && !r.mejores.length ? '<div class="aviso malo">No hay ninguna combinación sin cruces con esos límites. Quita alguna asignatura o amplía la ventana.</div>' : ''}
+    ${r && r.mejores.length ? `<div class="meta" style="margin-bottom:8px">${r.mejores.length} propuesta${r.mejores.length === 1 ? '' : 's'} (${r.nodos.toLocaleString('es')} combinaciones exploradas${r.parcial ? ', búsqueda parcial: hay demasiadas, se muestran las mejores encontradas' : ''}).</div>
+      <div class="opt-lista">${r.mejores.map((p, k) => `<div class="hueco-item">
+        <div class="hueco-cab"><b>Propuesta ${k + 1}</b>
+          <span class="chip" style="background:#2563c4">${p.m.dias} día${p.m.dias === 1 ? '' : 's'}</span>
+          <span class="chip" style="background:#16a085">huecos ${horasTexto(p.m.huecos)}</span>
+          <span class="chip" style="background:#7f8c8d">${hhmm(p.m.inicio)}–${hhmm(p.m.fin)}</span></div>
+        ${p.eleccion.map(({ u, g }) => `<div class="hueco-grupo"><b>${esc(u.nombre)}</b>${u.act && items.find(it => it.cod === u.cod).oferta.actividades.length > 1 ? ` <span class="meta">${esc(u.act.nombre.replace(/\s*\(.*$/, ''))}</span>` : ''} — ${esc(g.grupo)}${g.profesores.length ? ' · ' + esc(g.profesores[0]) : ''} · ${g.cupos} cupos
+          <div class="meta">${g.sesiones.map(x => esc(horaTexto(x))).join(' · ')}</div></div>`).join('')}
+        <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn primario" data-opt-aplicar="${k}">Aplicar a este horario</button><button class="btn" data-opt-guardar="${k}">Guardar como horario nuevo</button></div>
+      </div>`).join('')}</div>` : ''}
+  </div>`;
+}
+
+/** Escribe una propuesta del optimizador en un escenario. */
+function aplicarPropuesta(p, esc_) {
+  for (const { u, g } of p.eleccion) esc_.grupos[u.cod + '|' + u.act.nombre] = g.codigoGrupo;
+}
+
 function pintarHorario() {
   const cont = $('#horCont');
   $('#horPeriodo').textContent = OFERTA_SEM ? `Periodo ${OFERTA_SEM} · consultado el ${typeof OFERTA_CONSULTADO === 'string' ? OFERTA_CONSULTADO : '?'}` : '';
@@ -1415,9 +1589,12 @@ function pintarHorario() {
     cont.innerHTML = '<div class="hor-vacio">No hay oferta cargada. Genera <code>js/oferta.js</code> con <code>node herramientas/catalogo-sia.js sincronizar</code>.</div>';
     return;
   }
+  normalizarHorario();
+  if (HOR_UI.comparar && S.horario.escenarios.length > 1) { cont.innerHTML = barraEscenarios() + vistaComparar(); return; }
+  HOR_UI.comparar = false;
   const items = asignaturasHorario();
   if (!items.length) {
-    cont.innerHTML = '<div class="hor-vacio">Marca asignaturas como <b>Cursando</b> en la malla o añádelas con el buscador de arriba.</div>' + panelHuecos([], []);
+    cont.innerHTML = barraEscenarios() + '<div class="hor-vacio">Marca asignaturas como <b>Cursando</b> en la malla o añádelas con el buscador de arriba.</div>' + panelHuecos([], []);
     return;
   }
   const ses = sesionesHorario(items);
@@ -1445,29 +1622,19 @@ function pintarHorario() {
       ${acts}</div>`;
   }).join('');
 
-  const horas = []; for (let h = HORA_INI; h < HORA_FIN; h++) horas.push(`<div>${h}:00</div>`);
-  const dias = [1, 2, 3, 4, 5, 6].map(d => {
-    const bloques = ses.filter(x => x.dia === d).map(x => {
-      const top = (x.ini - HORA_INI * 60) / 60, alto = (x.fin - x.ini) / 60;
-      return `<div class="hor-bloque ${x.choque ? 'choque' : ''}" style="top:calc(${top} * var(--hora-alto));height:calc(${alto} * var(--hora-alto) - 2px);background:${x.color}" title="${esc(x.nombre)} · ${esc(x.grupo)}${x.salon ? ' · ' + esc(x.salon) : ''}">
-        <b>${esc(x.nombre)}</b><small>${esc(x.grupo)}${x.salon ? ' · ' + esc(x.salon) : ''}</small></div>`;
-    }).join('');
-    return `<div class="dia" style="height:calc(${HORA_FIN - HORA_INI} * var(--hora-alto))">${bloques}</div>`;
-  }).join('');
-
-  cont.innerHTML = `
+  const met = metricasHorario(ses);
+  cont.innerHTML = barraEscenarios() + `
     <div class="hor-resumen">
       <span><b>${items.length}</b> asignatura${items.length === 1 ? '' : 's'}</span>
       <span><b>${cr}</b> créditos</span>
       <span><b>${ses.length}</b> franja${ses.length === 1 ? '' : 's'} semanales</span>
       ${sinGrupo.length ? `<span>Falta elegir grupo en: ${sinGrupo.map(it => esc(it.oferta.nombre)).join(', ')}</span>` : ''}
       ${nChoques ? `<span class="hor-choque">⚠ ${nChoques} franja${nChoques === 1 ? '' : 's'} con cruce</span>` : ''}
+      ${ses.length ? `<span>${met.dias} día${met.dias === 1 ? '' : 's'} con clase · huecos ${horasTexto(met.huecos)} · ${hhmm(met.inicio)}–${hhmm(met.fin)}</span>` : ''}
     </div>
     <div class="hor-lista">${lista}</div>
-    ${ses.length ? `<div class="hor-semana">
-      <div class="cab"></div>${[1, 2, 3, 4, 5, 6].map(d => `<div class="cab">${DIAS_CORTOS[d]}</div>`).join('')}
-      <div class="horas">${horas.join('')}</div>${dias}
-    </div>` : ''}
+    ${ses.length ? semanaHTML(ses) : ''}
+    ${panelOptimizar(items)}
     ${panelHuecos(items, ses)}`;
 }
 
@@ -1609,13 +1776,13 @@ function init() {
     const anadirHor = e.target.closest('[data-anadir-hor]');
     if (anadirHor) {
       const c = anadirHor.dataset.anadirHor;
-      if (!S.horario.extras.includes(c)) S.horario.extras.push(c);
+      if (!HOR().extras.includes(c)) HOR().extras.push(c);
       guardar(); $('#buscaHor').value = ''; $('#horSugerencias').hidden = true; pintarHorario();
       return;
     }
     const quitarHor = e.target.closest('[data-quitar-hor]');
     if (quitarHor) {
-      S.horario.extras = S.horario.extras.filter(c => c !== quitarHor.dataset.quitarHor);
+      HOR().extras = HOR().extras.filter(c => c !== quitarHor.dataset.quitarHor);
       guardar(); pintarHorario();
       return;
     }
@@ -1624,15 +1791,61 @@ function init() {
       // "cod|actividad=grupo;actividad=grupo": añade la asignatura y deja elegidos esos grupos.
       const [cod, grupos] = hueco.dataset.hueco.split('|');
       const yaEnPlan = PLAN.some(a => est(a.id) === 'cursando' && codBase(codDe(a)) === cod);
-      if (!yaEnPlan && !S.horario.extras.includes(cod)) S.horario.extras.push(cod);
+      if (!yaEnPlan && !HOR().extras.includes(cod)) HOR().extras.push(cod);
       for (const par of (grupos || '').split(';').filter(Boolean)) {
-        const i = par.lastIndexOf('='); S.horario.grupos[cod + '|' + par.slice(0, i)] = par.slice(i + 1);
+        const i = par.lastIndexOf('='); HOR().grupos[cod + '|' + par.slice(0, i)] = par.slice(i + 1);
       }
       guardar(); pintarHorario();
       avisar('Añadida al horario con el grupo que cabe.');
       return;
     }
-    if (e.target.closest('[data-hueco-mas]')) { HUECOS.limite += 30; pintarHorario(); }
+    if (e.target.closest('[data-hueco-mas]')) { HUECOS.limite += 30; pintarHorario(); return; }
+    // --- escenarios ---
+    const escBtn = e.target.closest('[data-esc]');
+    if (escBtn) { normalizarHorario(); S.horario.activo = +escBtn.dataset.esc; HOR_UI.comparar = false; OPT.resultados = null; guardar(); pintarHorario(); return; }
+    if (e.target.closest('[data-esc-comparar]')) { HOR_UI.comparar = !HOR_UI.comparar; pintarHorario(); return; }
+    if (e.target.closest('[data-esc-nuevo]')) {
+      normalizarHorario();
+      S.horario.escenarios.push({ nombre: letraEscenario(S.horario.escenarios.length), extras: [], grupos: {} });
+      S.horario.activo = S.horario.escenarios.length - 1; HOR_UI.comparar = false; OPT.resultados = null; guardar(); pintarHorario(); return;
+    }
+    if (e.target.closest('[data-esc-duplicar]')) {
+      const a = HOR();
+      S.horario.escenarios.push({ nombre: letraEscenario(S.horario.escenarios.length), extras: [...a.extras], grupos: Object.assign({}, a.grupos) });
+      S.horario.activo = S.horario.escenarios.length - 1; HOR_UI.comparar = false; guardar(); pintarHorario(); return;
+    }
+    if (e.target.closest('[data-esc-renombrar]')) {
+      const a = HOR(); const n = prompt('Nombre del horario', a.nombre);
+      if (n && n.trim()) { a.nombre = n.trim().slice(0, 30); guardar(); pintarHorario(); }
+      return;
+    }
+    if (e.target.closest('[data-esc-eliminar]')) {
+      normalizarHorario();
+      if (S.horario.escenarios.length < 2 || !confirm(`¿Eliminar «${HOR().nombre}»?`)) return;
+      S.horario.escenarios.splice(S.horario.activo, 1); S.horario.activo = 0; OPT.resultados = null; guardar(); pintarHorario(); return;
+    }
+    // --- optimizador ---
+    if (e.target.closest('[data-opt-buscar]')) {
+      OPT.resultados = optimizarHorario(asignaturasHorario()); pintarHorario();
+      const p = $('#horCont .hor-optimizar'); if (p && p.scrollIntoView) p.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      return;
+    }
+    const aplicar = e.target.closest('[data-opt-aplicar]');
+    if (aplicar && OPT.resultados) { aplicarPropuesta(OPT.resultados.mejores[+aplicar.dataset.optAplicar], HOR()); guardar(); pintarHorario(); avisar('Grupos aplicados a este horario.'); return; }
+    const guardarComo = e.target.closest('[data-opt-guardar]');
+    if (guardarComo && OPT.resultados) {
+      const a = HOR();
+      const nuevo = { nombre: letraEscenario(S.horario.escenarios.length), extras: [...a.extras], grupos: Object.assign({}, a.grupos) };
+      aplicarPropuesta(OPT.resultados.mejores[+guardarComo.dataset.optGuardar], nuevo);
+      S.horario.escenarios.push(nuevo); S.horario.activo = S.horario.escenarios.length - 1; OPT.resultados = null;
+      guardar(); pintarHorario(); avisar(`Guardado como «${nuevo.nombre}».`); return;
+    }
+  });
+  document.addEventListener('change', e => {
+    const f = e.target.closest('[data-opt-f]');
+    if (!f) return;
+    OPT[f.dataset.optF] = f.type === 'checkbox' ? f.checked : f.value;
+    OPT.resultados = null;
   });
   document.addEventListener('change', e => {
     const f = e.target.closest('[data-hueco-f]');
@@ -1645,12 +1858,21 @@ function init() {
   document.addEventListener('change', e => {
     const sel = e.target.closest('select[data-grupo]');
     if (!sel) return;
-    if (sel.value) S.horario.grupos[sel.dataset.grupo] = sel.value; else delete S.horario.grupos[sel.dataset.grupo];
+    if (sel.value) HOR().grupos[sel.dataset.grupo] = sel.value; else delete HOR().grupos[sel.dataset.grupo];
     guardar(); pintarHorario();
   });
   $('#buscaHor').addEventListener('input', sugerirHorario);
   $('#buscaHor').addEventListener('focus', sugerirHorario);
   $('#btnLimpiarResalte').addEventListener('click', () => { resaltado = null; refrescar(); });
+  // Nivelación (inglés, matemáticas básicas, lecto-escritura): no todo el mundo la cursa.
+  const bNiv = $('#btnNivelacion');
+  if (bNiv) bNiv.addEventListener('click', () => {
+    const niv = PLAN.filter(a => COMPONENTES[a.comp] && COMPONENTES[a.comp].noCuenta);
+    const todasExentas = niv.every(a => est(a.id) === 'homologada');
+    niv.forEach(a => { if (todasExentas) delete S.estado[a.id]; else S.estado[a.id] = 'homologada'; });
+    guardar(); refrescar();
+    avisar(todasExentas ? 'Nivelación devuelta a pendiente.' : `${niv.length} asignaturas de nivelación marcadas como exentas.`);
+  });
   $('#selModo').addEventListener('change', pintarPlan);
   $('#numMax').addEventListener('change', pintarPlan);
   $('#chkNivel').addEventListener('change', pintarPlan);

@@ -560,3 +560,21 @@ details.ficha p { margin: 0; padding: 9px 11px; font-size: 12.5px; line-height: 
 .hueco-grupo { font-size: 12.5px; }
 .hueco-grupo .cupo0 { color: #c0392b; font-weight: 700; }
 .hueco-item .btn { align-self: flex-start; margin-top: 2px; }
+
+/* ---------------------------------- escenarios de horario y optimizador ---- */
+.hor-escenarios { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 12px; }
+.hor-escenarios .esc { background: var(--panel); border: 1px solid var(--borde); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 12.5px; color: var(--texto-2); cursor: pointer; }
+.hor-escenarios .esc.activo { background: var(--disp-bg); border-color: var(--disp); color: var(--texto); font-weight: 650; }
+.hor-escenarios .esc:disabled { opacity: .5; cursor: default; }
+.hor-escenarios .btn { font-size: 12px; padding: 4px 9px; }
+.hor-escenarios .crece { flex: 1; }
+.hor-comparar td.activo, .hor-comparar tr.activo td { background: var(--disp-bg); }
+.hor-comparar .meta { font-size: 11.5px; color: var(--texto-2); max-width: 320px; }
+.hor-comparar-semanas { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; margin-top: 12px; }
+.hor-comparar-semanas h4 { margin: 0 0 6px; font-size: 13.5px; display: flex; gap: 8px; align-items: center; }
+.hor-optimizar { margin-top: 18px; }
+.opt-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+
+/* ---------------------------------------------- homologada / exenta ------- */
+.card.homologada { border-left-style: dashed; }
+.card.homologada .etq { background: transparent; color: var(--ok); border: 1px dashed var(--ok); }

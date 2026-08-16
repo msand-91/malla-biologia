@@ -311,6 +311,7 @@ w.__api.PLAN.filter(a => ['FO', 'FP'].includes(a.comp)).forEach(a => { w.__api.S
 chk([...$$('#malla .card')].find(c => c.dataset.id === 'DISC_6_1').classList.contains('disponible'), 'y se desbloquea con la fundamentación aprobada');
 w.__api.S.estado = {}; w.__api.S.ranuras = {}; w.__api.guardar(); w.__api.refrescar();
 
+const HACT = () => w.__api.S.horario.escenarios[w.__api.S.horario.activo];
 console.log('\n[V] Horario con la oferta del SIA');
 w.__api.S.estado = {}; w.__api.S.horario = { extras: [], grupos: {} }; w.__api.guardar(); w.__api.refrescar();
 $('[data-vista="vHorario"]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
@@ -327,7 +328,7 @@ if (selHor) {
   selHor.value = selHor.options[1].value;
   selHor.dispatchEvent(new w.Event('change', { bubbles: true }));
   chk($$('#horCont .hor-bloque').length >= 1, `al elegir grupo se pintan bloques en la semana (${$$('#horCont .hor-bloque').length})`);
-  chk(Object.values(w.__api.S.horario.grupos)[0] === selHor.value, 'el grupo elegido se guarda');
+  chk(Object.values(HACT().grupos)[0] === selHor.value, 'el grupo elegido se guarda');
 }
 $('#buscaHor').value = 'ecología';
 $('#buscaHor').dispatchEvent(new w.Event('input', { bubbles: true }));
@@ -336,7 +337,7 @@ chk(!!sug, 'el buscador sugiere asignaturas de la oferta');
 if (sug) {
   sug.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
   chk($$('#horCont .hor-item').length === 2, 'la asignatura añadida aparece en el horario');
-  chk(w.__api.S.horario.extras.length === 1, 'y queda guardada como extra');
+  chk(HACT().extras.length === 1, 'y queda guardada como extra');
   $('#horCont [data-quitar-hor]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
   chk($$('#horCont .hor-item').length === 1, 'se puede quitar');
 }
@@ -360,8 +361,8 @@ chk(primera && /sem [IVX]+ · disponible/.test(primera.textContent), `la primera
 const btnH = primera.querySelector('[data-hueco]');
 const codH = btnH.dataset.hueco.split('|')[0];
 btnH.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
-chk($$('#horCont .hor-item').length === 1 && w.__api.S.horario.extras.includes(codH), 'al añadirla entra en el horario');
-chk(Object.keys(w.__api.S.horario.grupos).some(k => k.startsWith(codH + '|')), 'con el grupo elegido');
+chk($$('#horCont .hor-item').length === 1 && HACT().extras.includes(codH), 'al añadirla entra en el horario');
+chk(Object.keys(HACT().grupos).some(k => k.startsWith(codH + '|')), 'con el grupo elegido');
 chk($$('#horCont .hor-bloque').length > 0, 'y se pinta en la semana');
 // lo que se ofrece ahora no se cruza con lo que hay
 const sesAhora = [...$$('#horCont .hor-bloque')].length;
@@ -384,7 +385,7 @@ if (mas) { mas.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); chk(
 // nada de lo ofrecido se cruza con el horario actual (comprobación dura)
 const S2 = w.__api.S; const OF = w.__api.OFERTA_MAP;
 const ocupadas = [];
-for (const [k, g] of Object.entries(S2.horario.grupos)) { const [c, act] = k.split('|'); const a = OF[c].actividades.find(x => x.nombre === act); const gg = a && a.grupos.find(x => x.codigoGrupo === g); if (gg) gg.sesiones.forEach(x => ocupadas.push(x)); }
+for (const [k, g] of Object.entries(HACT().grupos)) { const [c, act] = k.split('|'); const a = OF[c].actividades.find(x => x.nombre === act); const gg = a && a.grupos.find(x => x.codigoGrupo === g); if (gg) gg.sesiones.forEach(x => ocupadas.push(x)); }
 const min = h => { const [a, b] = h.split(':').map(Number); return a * 60 + b; };
 let cruces = 0;
 for (const item of $$('#horCont .hueco-item')) {
@@ -394,6 +395,89 @@ for (const item of $$('#horCont .hueco-item')) {
 }
 chk(cruces === 0, `ninguna opción ofrecida se cruza con el horario (${cruces} cruces)`);
 w.__api.S.estado = {}; w.__api.S.horario = { extras: [], grupos: {} }; w.__api.guardar(); w.__api.refrescar();
+
+const LS_HOR = LS;
+console.log('\n[X] Varios horarios (escenarios) y comparación');
+// formato antiguo → se migra
+w.__api.S.estado = {}; w.__api.S.horario = { extras: [], grupos: {} }; w.__api.guardar(); w.__api.refrescar();
+$('[data-vista="vHorario"]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+chk(Array.isArray(w.__api.S.horario.escenarios) && w.__api.S.horario.escenarios.length === 1, 'el formato antiguo se migra a un escenario «Horario A»');
+chk($$('#horCont .hor-escenarios .esc').length >= 2, 'aparece la barra de escenarios');
+// añadir una asignatura por huecos y luego duplicar
+$('#horCont [data-hueco]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+const codA = w.__api.S.horario.escenarios[0].extras[0];
+$('#horCont [data-esc-duplicar]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+chk(w.__api.S.horario.escenarios.length === 2 && w.__api.S.horario.activo === 1, 'duplicar crea «Horario B» y lo activa');
+chk(w.__api.S.horario.escenarios[1].extras.includes(codA), 'con la misma asignatura');
+// en B añadimos otra; A no cambia
+$('#horCont [data-hueco]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+chk(w.__api.S.horario.escenarios[1].extras.length === 2 && w.__api.S.horario.escenarios[0].extras.length === 1, 'los cambios en B no tocan A');
+// cambiar a A
+$('#horCont [data-esc="0"]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+chk(w.__api.S.horario.activo === 0 && $$('#horCont .hor-item').length === 1, 'volver a A muestra su horario');
+// comparar
+$('#horCont [data-esc-comparar]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+chk($$('#horCont table.hor-comparar tbody tr').length === 2, 'la comparación lista los dos escenarios');
+chk($$('#horCont .hor-comparar-semanas .hor-semana').length === 2, 'con sus dos semanas lado a lado');
+$('#horCont [data-esc="1"]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+chk(!$('#horCont table.hor-comparar') && w.__api.S.horario.activo === 1, '«abrir» sale de la comparación al escenario elegido');
+// nuevo vacío y eliminar
+$('#horCont [data-esc-nuevo]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+chk(w.__api.S.horario.escenarios.length === 3 && $$('#horCont .hor-item').length === 0, 'nuevo crea un escenario vacío');
+w.confirm = () => true;
+$('#horCont [data-esc-eliminar]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+chk(w.__api.S.horario.escenarios.length === 2, 'eliminar lo quita');
+chk(JSON.parse(w.localStorage.getItem(LS_HOR)).horario.escenarios.length === 2, 'los escenarios se persisten');
+
+console.log('\n[Y] Optimizador de horario');
+// escenario B tiene 2 asignaturas; añadimos una tercera con varios grupos si existe
+w.__api.S.horario.activo = 1; w.__api.guardar(); w.__api.refrescar();
+const itemsB = w.__api.S.horario.escenarios[1].extras.slice();
+$('#horCont [data-opt-buscar]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+const props = $$('#horCont .opt-lista .hueco-item');
+chk(props.length >= 1, `el optimizador propone ${props.length} combinación(es)`);
+chk($('#horCont .hor-optimizar').textContent.includes('combinaciones exploradas'), 'e informa cuántas combinaciones exploró');
+// aplicar la primera: sin cruces y todos los grupos elegidos
+props[0].querySelector('[data-opt-aplicar]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+chk(!$('#horCont .hor-resumen').textContent.includes('con cruce'), 'la propuesta aplicada no tiene cruces');
+chk(!$('#horCont .hor-resumen').textContent.includes('Falta elegir grupo'), 'y deja grupo elegido en todas las actividades');
+// guardar como nuevo
+$('#horCont [data-opt-buscar]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+const nAntes = w.__api.S.horario.escenarios.length;
+const btnG = $('#horCont [data-opt-guardar]');
+if (btnG) { btnG.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); chk(w.__api.S.horario.escenarios.length === nAntes + 1, '«Guardar como horario nuevo» crea otro escenario con esos grupos'); }
+// límite horario imposible → aviso claro
+w.__api.S.horario.activo = 1; w.__api.guardar(); w.__api.refrescar();
+const desde = $('#horCont [data-opt-f="desde"]'); desde.value = '19:00'; desde.dispatchEvent(new w.Event('change', { bubbles: true }));
+$('#horCont [data-opt-buscar]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+chk($('#horCont .hor-optimizar .aviso.malo') !== null, 'con una ventana imposible avisa en vez de fallar');
+const desde2 = $('#horCont [data-opt-f="desde"]'); desde2.value = ''; desde2.dispatchEvent(new w.Event('change', { bubbles: true }));
+w.__api.S.estado = {}; w.__api.S.horario = { extras: [], grupos: {} }; w.__api.guardar(); w.__api.refrescar();
+
+console.log('\n[Z] Homologada / exenta');
+w.__api.S.estado = {}; w.__api.guardar(); w.__api.refrescar();
+$('[data-vista="vMalla"]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+[...$$('#malla .card')].find(c => c.dataset.id === '1000044').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+const bH = [...$$('#segEstado button')].find(b => b.dataset.v === 'homologada');
+chk(!!bH, 'la ficha ofrece «Homologada / exenta»');
+bH.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+$('#detalle').close();
+const cH = [...$$('#malla .card')].find(c => c.dataset.id === '1000044');
+chk(cH.classList.contains('homologada') && cH.classList.contains('aprobada'), 'la tarjeta queda como homologada (y aprobada a efectos de estilo)');
+chk(cH.textContent.includes('Homologada'), 'con su etiqueta propia');
+chk([...$$('#malla .card')].find(c => c.dataset.id === '1000045').classList.contains('disponible'), 'desbloquea lo que dependía de ella');
+chk(w.__api.S.estado['1000044'] === 'homologada', 'se guarda como estado distinto');
+
+// atajo de nivelación (Biología)
+$('[data-vista="vMalla"]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+$('#btnNivelacion').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+const niv = w.__api.PLAN.filter(a => a.comp === 'NV');
+chk(niv.length === 4 && niv.every(a => w.__api.S.estado[a.id] === 'homologada'), 'el botón «Nivelación: exento» marca los 4 niveles de inglés como homologados');
+chk($('#progGlobal').style.width === '0%', 'sin que eso mueva la barra de los 163 créditos');
+$('#btnNivelacion').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+chk(niv.every(a => !w.__api.S.estado[a.id]), 'y al pulsarlo otra vez los devuelve a pendiente');
+
+w.__api.S.estado = {}; w.__api.guardar(); w.__api.refrescar();
 
 console.log('\n' + (errores.length ? `✗ ${errores.length} FALLA(S)` : '✓ TODAS LAS COMPROBACIONES PASAN'));
 process.exit(errores.length ? 1 : 0);

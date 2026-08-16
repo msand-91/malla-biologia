@@ -36,17 +36,20 @@
     <div class="toolbar">
       <input type="search" id="busca" placeholder="Buscar asignatura o código…">
       <label><input type="checkbox" id="chkDisp"> Solo lo que puedo inscribir</label>
+      <button class="btn" id="btnNivelacion" title="Marca Inglés I–IV como exentos (examen de clasificación u homologación)">Nivelación: exento</button>
       <button class="btn" id="btnEdicion">✎ Editar malla</button>
       <button class="btn" id="btnLimpiarResalte" hidden>Quitar resalte</button>
     </div>
     <details class="acordeon" id="ayudaMalla">
       <summary>¿Cómo funciona?</summary>
       <div>
-        Toca cualquier asignatura para marcarla como <b>cursando</b> o <b>aprobada</b>, elegir la
+        Toca cualquier asignatura para marcarla como <b>cursando</b>, <b>aprobada</b> u
+        <b>homologada / exenta</b> (validada, reconocida o exenta por examen: cuenta como aprobada), elegir la
         optativa que la llena, ver qué desbloquea y abrir sus profesores y reseñas.
         Tu avance se guarda en este navegador.
         <div class="leyenda" style="margin-top:10px">
           <span><i class="sw" style="background:var(--ok-bg);border-left:3px solid var(--ok)"></i>Aprobada</span>
+          <span><i class="sw" style="background:var(--ok-bg);border-left:3px dashed var(--ok)"></i>Homologada / exenta</span>
           <span><i class="sw" style="background:var(--curso-bg);border-left:3px solid var(--curso)"></i>Cursando</span>
           <span><i class="sw" style="background:var(--panel);border-left:3px solid var(--disp)"></i>Disponible</span>
           <span><i class="sw" style="background:var(--bloq-bg)"></i>Bloqueada</span>
@@ -155,7 +158,7 @@
       Aquí armas el horario del semestre con la <b>oferta real del SIA</b> (grupos, profesores, salones y
       cupos). Entran solas las asignaturas que marques como <b>Cursando</b> en la malla; también puedes
       añadir cualquier otra con el buscador. Elige un grupo por asignatura y la semana se pinta abajo;
-      los cruces se marcan en rojo. Debajo, <b>«¿Qué cabe en mis huecos?»</b> busca en toda la oferta los grupos que no se cruzan con lo que ya tienes — obligatorias del plan que ya puedes ver, optativas y libre elección — y los añade con un clic. Los cupos son los del día de la consulta.
+      los cruces se marcan en rojo. Debajo, <b>«¿Qué cabe en mis huecos?»</b> busca en toda la oferta los grupos que no se cruzan con lo que ya tienes — obligatorias del plan que ya puedes ver, optativas y libre elección — y los añade con un clic. Puedes guardar <b>varios horarios</b> (A, B, C…) y compararlos, y <b>Optimizar</b> prueba todas las combinaciones de grupos de tus asignaturas y propone las mejores según lo que prefieras (menos días, menos huecos, empezar tarde o terminar temprano). Los cupos son los del día de la consulta.
     </div>
     <div id="horCont"></div>
   </section>
