@@ -1,0 +1,16 @@
+{
+  "name": "malla-curricular-biologia",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Malla curricular interactiva del pregrado en Biología, UNAL Sede Bogotá",
+  "scripts": {
+    "test": "node tests/logica.test.js && node tests/ui.test.js",
+    "verificar": "node herramientas/verificar-losestudiantes.js --catalogo",
+    "profesores": "node herramientas/sincronizar-profesores.js",
+    "empaquetar": "node herramientas/empaquetar.js"
+  },
+  "devDependencies": {
+    "jsdom": "^26.0.0",
+    "puppeteer": "^24.0.0"
+  }
+}

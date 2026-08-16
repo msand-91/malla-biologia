@@ -1,0 +1,3 @@
+# Sitio estático: no hay nada que construir, se publica la raíz tal cual.
+[build]
+  publish = "."
