@@ -346,5 +346,54 @@ chk($('#detalle').textContent.includes('Oferta') && $('#detalle').textContent.in
 $('#detalle').close();
 w.__api.S.estado = {}; w.__api.S.horario = { extras: [], grupos: {} }; w.__api.guardar(); w.__api.refrescar();
 
+console.log('\n[W] ¿Qué cabe en mis huecos?');
+w.__api.S.estado = {}; w.__api.S.ranuras = {}; w.__api.S.horario = { extras: [], grupos: {} }; w.__api.guardar(); w.__api.refrescar();
+$('[data-vista="vHorario"]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+chk(!!$('#horCont .hor-huecos'), 'el panel de huecos aparece aunque el horario esté vacío');
+const nVacio = $$('#horCont .hueco-item').length;
+chk(nVacio > 0, `con el horario vacío ofrece ${nVacio} opciones (limitadas a 30 por página)`);
+chk($('#horCont .hor-huecos').textContent.includes('Obligatorias del plan') && $('#horCont .hor-huecos').textContent.includes('Libre elección'), 'los filtros distinguen obligatorias, optativas y libre elección');
+// la primera opción es una obligatoria del plan disponible (van primero)
+const primera = $('#horCont .hueco-item');
+chk(primera && /sem [IVX]+ · disponible/.test(primera.textContent), `la primera opción es una obligatoria disponible del plan (${primera && primera.querySelector('b').textContent})`);
+// añadirla al horario con el grupo que cabe
+const btnH = primera.querySelector('[data-hueco]');
+const codH = btnH.dataset.hueco.split('|')[0];
+btnH.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+chk($$('#horCont .hor-item').length === 1 && w.__api.S.horario.extras.includes(codH), 'al añadirla entra en el horario');
+chk(Object.keys(w.__api.S.horario.grupos).some(k => k.startsWith(codH + '|')), 'con el grupo elegido');
+chk($$('#horCont .hor-bloque').length > 0, 'y se pinta en la semana');
+// lo que se ofrece ahora no se cruza con lo que hay
+const sesAhora = [...$$('#horCont .hor-bloque')].length;
+const cand2 = $$('#horCont .hueco-item');
+chk(cand2.length > 0 && !cand2.some(c => c.textContent.includes(codH)), 'las opciones nuevas no incluyen la ya añadida');
+chk($('#horCont .hueco-libres').textContent.includes('–'), 'muestra los huecos libres por día');
+// filtro por tipo: libre elección
+const selTipo = $('#horCont [data-hueco-f="tipo"]'); selTipo.value = 'libre'; selTipo.dispatchEvent(new w.Event('change', { bubbles: true }));
+const soloLibre = $$('#horCont .hueco-item');
+chk(soloLibre.length > 0 && soloLibre.every(c => c.textContent.includes('Libre elección')), `el filtro «Libre elección» deja solo electivas (${soloLibre.length})`);
+// filtro de créditos
+const inCr = $('#horCont [data-hueco-f="maxCr"]'); inCr.value = '2'; inCr.dispatchEvent(new w.Event('change', { bubbles: true }));
+chk($$('#horCont .hueco-item').every(c => /· [12] cr/.test(c.textContent)), 'el tope de créditos se respeta');
+// mostrar más
+const selTipo2 = $('#horCont [data-hueco-f="tipo"]'); selTipo2.value = 'todas'; selTipo2.dispatchEvent(new w.Event('change', { bubbles: true }));
+$('#horCont [data-hueco-f="maxCr"]').value = ''; $('#horCont [data-hueco-f="maxCr"]').dispatchEvent(new w.Event('change', { bubbles: true }));
+const antesMas = $$('#horCont .hueco-item').length;
+const mas = $('#horCont [data-hueco-mas]');
+if (mas) { mas.dispatchEvent(new w.MouseEvent('click', { bubbles: true })); chk($$('#horCont .hueco-item').length > antesMas, '«Mostrar más» amplía la lista'); }
+// nada de lo ofrecido se cruza con el horario actual (comprobación dura)
+const S2 = w.__api.S; const OF = w.__api.OFERTA_MAP;
+const ocupadas = [];
+for (const [k, g] of Object.entries(S2.horario.grupos)) { const [c, act] = k.split('|'); const a = OF[c].actividades.find(x => x.nombre === act); const gg = a && a.grupos.find(x => x.codigoGrupo === g); if (gg) gg.sesiones.forEach(x => ocupadas.push(x)); }
+const min = h => { const [a, b] = h.split(':').map(Number); return a * 60 + b; };
+let cruces = 0;
+for (const item of $$('#horCont .hueco-item')) {
+  const [c, grupos] = item.querySelector('[data-hueco]').dataset.hueco.split('|');
+  for (const par of grupos.split(';')) { const i = par.lastIndexOf('='); const a = OF[c].actividades.find(x => x.nombre === par.slice(0, i)); const g = a.grupos.find(x => x.codigoGrupo === par.slice(i + 1));
+    for (const x of g.sesiones) for (const y of ocupadas) if (x.dia === y.dia && min(x.inicio) < min(y.fin) && min(y.inicio) < min(x.fin)) cruces++; }
+}
+chk(cruces === 0, `ninguna opción ofrecida se cruza con el horario (${cruces} cruces)`);
+w.__api.S.estado = {}; w.__api.S.horario = { extras: [], grupos: {} }; w.__api.guardar(); w.__api.refrescar();
+
 console.log('\n' + (errores.length ? `✗ ${errores.length} FALLA(S)` : '✓ TODAS LAS COMPROBACIONES PASAN'));
 process.exit(errores.length ? 1 : 0);

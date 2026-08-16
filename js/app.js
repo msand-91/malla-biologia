@@ -1274,6 +1274,140 @@ function sesionesHorario(items) {
   return ses;
 }
 
+/* ------------------------------------------ huecos: qué cabe en el horario */
+/* Filtros del buscador de huecos (no se persisten: son de la sesión). */
+const HUECOS = { tipo: 'todas', maxCr: '', soloCupos: true, incluirBloqueadas: false, texto: '', limite: 30 };
+const HUECO_INI = 7 * 60, HUECO_FIN = 20 * 60, HUECO_MIN = 60;
+
+const fundamentacionCompleta = hechas => PLAN.every(x => !['FO', 'FP', 'DO'].includes(x.comp) || hechas.has(x.id));
+
+/** Qué es cada asignatura de la oferta para quien usa la app: obligatoria del
+    plan (y su estado), optativa del catálogo (y si cumple requisitos), libre
+    elección, u otra. */
+function clasificarOferta(cod, disp, hechas) {
+  const c = codBase(cod);
+  const fija = PLAN.find(x => !x.ranura && codBase(codDe(x)) === c);
+  if (fija) return { tipo: 'plan', estado: disp[fija.id] || 'disponible', asig: fija };
+  const cupo = PLAN.find(x => x.ranura && S.ranuras[x.id] && codBase(S.ranuras[x.id].cod) === c);
+  if (cupo) return { tipo: 'optativa', estado: disp[cupo.id] || 'disponible', asig: cupo, asignada: true };
+  const cat = typeof CATALOGO === 'object' && CATALOGO.find(x => codBase(x.cod) === c);
+  if (cat) {
+    const ok = (cat.pre || []).every(p => !PLAN_POR_ID[p] || hechas.has(p)) && (!cat.preFund || fundamentacionCompleta(hechas));
+    return { tipo: 'optativa', estado: ok ? 'disponible' : 'bloqueada', cat };
+  }
+  const o = ofertaDe(c);
+  if (o && (o.origen || []).some(x => x === '2CLE' || x === '2PEL')) return { tipo: 'libre', estado: 'disponible' };
+  return { tipo: 'otra', estado: 'disponible' };
+}
+
+const cruza = (x, ses) => ses.some(y => y.dia === x.dia && x.ini < y.fin && y.ini < x.fin);
+const sesionesDe = g => g.sesiones.filter(x => x.dia && x.inicio && x.fin).map(x => ({ dia: x.dia, ini: minutos(x.inicio), fin: minutos(x.fin) }));
+
+/** Para una asignatura de la oferta, elige un grupo por actividad de modo que
+    nada se cruce con `ocupadas` ni entre sí. Devuelve null si no cabe. */
+function combinacionQueCabe(o, ocupadas, soloCupos) {
+  const acts = o.actividades.filter(a => a.grupos.length);
+  if (!acts.length) return null;
+  const elegidos = [];
+  const intenta = (i, ses) => {
+    if (i === acts.length) return true;
+    for (const g of acts[i].grupos) {
+      if (soloCupos && !g.cupos) continue;
+      const sg = sesionesDe(g);
+      if (!sg.length || sg.some(x => cruza(x, ses))) continue;
+      elegidos[i] = g;
+      if (intenta(i + 1, ses.concat(sg))) return true;
+    }
+    return false;
+  };
+  return intenta(0, ocupadas) ? acts.map((a, i) => ({ act: a, grupo: elegidos[i] })) : null;
+}
+
+/** Huecos libres por día (entre 7:00 y 20:00, de al menos una hora). */
+function huecosLibres(ses) {
+  const out = [];
+  for (let d = 1; d <= 6; d++) {
+    const ocup = ses.filter(x => x.dia === d).map(x => [x.ini, x.fin]).sort((a, b) => a[0] - b[0]);
+    let t = HUECO_INI; const libres = [];
+    for (const [i, f] of ocup) { if (i - t >= HUECO_MIN) libres.push([t, Math.min(i, HUECO_FIN)]); t = Math.max(t, f); }
+    if (HUECO_FIN - t >= HUECO_MIN) libres.push([t, HUECO_FIN]);
+    if (ocup.length) out.push({ dia: d, libres });
+  }
+  return out;
+}
+const hhmm = m => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
+
+/** Candidatas que caben en el horario actual, ya filtradas y ordenadas. */
+function buscarHuecos(items, ses) {
+  const disp = calcularDisponibilidad();
+  const hechas = setAprobadas();
+  const enHorario = new Set(items.map(it => it.cod));
+  const q = sinTildes(HUECOS.texto.trim());
+  const res = [];
+  for (const o of Object.values(OFERTA_MAP)) {
+    if (enHorario.has(o.cod)) continue;
+    if (HUECOS.maxCr && o.creditos > +HUECOS.maxCr) continue;
+    if (q && !sinTildes(o.nombre + ' ' + o.cod + ' ' + (o.descripcion || '')).includes(q)) continue;
+    const cl = clasificarOferta(o.cod, disp, hechas);
+    if (cl.estado === 'aprobada' || cl.estado === 'cursando') continue;
+    if (HUECOS.tipo !== 'todas' && cl.tipo !== HUECOS.tipo) continue;
+    if (cl.estado === 'bloqueada' && !HUECOS.incluirBloqueadas) continue;
+    const combo = combinacionQueCabe(o, ses, HUECOS.soloCupos);
+    if (!combo) continue;
+    res.push({ o, cl, combo });
+  }
+  const orden = { plan: 0, optativa: 1, libre: 2, otra: 3 };
+  res.sort((a, b) => (a.cl.estado === 'bloqueada') - (b.cl.estado === 'bloqueada')
+    || orden[a.cl.tipo] - orden[b.cl.tipo]
+    || (a.cl.asig ? a.cl.asig.sem : 99) - (b.cl.asig ? b.cl.asig.sem : 99)
+    || a.o.nombre.localeCompare(b.o.nombre, 'es'));
+  return res;
+}
+
+function etiquetaTipo(cl) {
+  const est = cl.estado === 'bloqueada' ? ' · faltan requisitos' : cl.estado === 'disponible' ? ' · disponible' : '';
+  if (cl.tipo === 'plan') return `<span class="chip" style="background:${COMPONENTES[cl.asig.comp].color}">${esc(COMPONENTES[cl.asig.comp].corto)} · sem ${ROMANOS[cl.asig.sem] || cl.asig.sem}${est}</span>`;
+  if (cl.tipo === 'optativa') return `<span class="chip" style="background:#9fce9a">Optativa${cl.asignada ? ' asignada a un cupo' : ''}${est}</span>`;
+  if (cl.tipo === 'libre') return `<span class="chip" style="background:#b07bc4">Libre elección</span>`;
+  return `<span class="chip" style="background:#7f8c8d">Otra</span>`;
+}
+
+function panelHuecos(items, ses) {
+  const huecos = huecosLibres(ses);
+  const cand = buscarHuecos(items, ses);
+  const vis = cand.slice(0, HUECOS.limite);
+  const filaCand = ({ o, cl, combo }) => `<div class="hueco-item">
+      <div class="hueco-cab"><b>${esc(o.nombre)}</b> <span class="meta">${esc(o.cod)} · ${o.creditos} cr</span> ${etiquetaTipo(cl)}</div>
+      ${combo.map(({ act, grupo: g }) => `<div class="hueco-grupo">
+        ${o.actividades.length > 1 ? `<span class="meta">${esc(act.nombre.replace(/\s*\(.*$/, ''))}:</span> ` : ''}<b>${esc(g.grupo)}</b>
+        ${g.profesores.length ? ' · ' + esc(g.profesores.join(', ')) : ''} · <span class="${g.cupos ? '' : 'cupo0'}">${g.cupos} cupo${g.cupos === 1 ? '' : 's'}</span>
+        <div class="meta">${g.sesiones.map(x => esc(horaTexto(x)) + (x.salon ? ' · ' + esc(x.salon) : '')).join(' · ')}</div></div>`).join('')}
+      <button class="btn" data-hueco="${esc(o.cod)}|${combo.map(c => c.act.nombre + '=' + c.grupo.codigoGrupo).join(';')}">Añadir al horario</button>
+    </div>`;
+  return `<div class="panel hor-huecos">
+    <h3>¿Qué cabe en mis huecos? <span class="hint">— grupos de la oferta ${esc(OFERTA_SEM)} que no se cruzan con lo que ya tienes</span></h3>
+    ${ses.length ? `<div class="hueco-libres">${huecos.map(h => `<span><b>${DIAS_CORTOS[h.dia]}</b> ${h.libres.length ? h.libres.map(([i, f]) => hhmm(i) + '–' + hhmm(f)).join(', ') : 'sin huecos'}</span>`).join('')}
+        ${[1, 2, 3, 4, 5, 6].filter(d => !huecos.some(h => h.dia === d)).length ? `<span><b>Libres todo el día:</b> ${[1, 2, 3, 4, 5, 6].filter(d => !huecos.some(h => h.dia === d)).map(d => DIAS_CORTOS[d]).join(', ')}</span>` : ''}</div>`
+      : `<div class="hueco-libres"><span>Aún no hay nada en el horario: se muestra todo lo que tiene grupo con horario.</span></div>`}
+    <div class="toolbar hueco-filtros">
+      <label>Mostrar
+        <select data-hueco-f="tipo">
+          <option value="todas" ${HUECOS.tipo === 'todas' ? 'selected' : ''}>Todo</option>
+          <option value="plan" ${HUECOS.tipo === 'plan' ? 'selected' : ''}>Obligatorias del plan</option>
+          <option value="optativa" ${HUECOS.tipo === 'optativa' ? 'selected' : ''}>Optativas del catálogo</option>
+          <option value="libre" ${HUECOS.tipo === 'libre' ? 'selected' : ''}>Libre elección</option>
+        </select></label>
+      <label>Máx. créditos <input type="number" min="1" max="12" data-hueco-f="maxCr" value="${esc(HUECOS.maxCr)}" style="width:60px" placeholder="—"></label>
+      <label><input type="checkbox" data-hueco-f="soloCupos" ${HUECOS.soloCupos ? 'checked' : ''}> Solo con cupos</label>
+      <label><input type="checkbox" data-hueco-f="incluirBloqueadas" ${HUECOS.incluirBloqueadas ? 'checked' : ''}> Incluir las que aún no cumplen requisitos</label>
+      <input type="search" data-hueco-f="texto" value="${esc(HUECOS.texto)}" placeholder="Filtrar por nombre o tema…">
+    </div>
+    <div class="meta" style="margin:0 0 8px">${cand.length} opción${cand.length === 1 ? '' : 'es'} que caben${cand.length > vis.length ? ` · mostrando ${vis.length}` : ''}. Primero las obligatorias del plan disponibles, por semestre; luego optativas y libre elección.</div>
+    ${vis.length ? `<div class="hueco-lista">${vis.map(filaCand).join('')}</div>` : '<div class="hor-vacio">Nada cabe con esos filtros. Prueba a quitar «solo con cupos» o a subir el tope de créditos.</div>'}
+    ${cand.length > vis.length ? `<button class="btn" data-hueco-mas>Mostrar ${Math.min(30, cand.length - vis.length)} más</button>` : ''}
+  </div>`;
+}
+
 function pintarHorario() {
   const cont = $('#horCont');
   $('#horPeriodo').textContent = OFERTA_SEM ? `Periodo ${OFERTA_SEM} · consultado el ${typeof OFERTA_CONSULTADO === 'string' ? OFERTA_CONSULTADO : '?'}` : '';
@@ -1283,7 +1417,7 @@ function pintarHorario() {
   }
   const items = asignaturasHorario();
   if (!items.length) {
-    cont.innerHTML = '<div class="hor-vacio">Marca asignaturas como <b>Cursando</b> en la malla o añádelas con el buscador de arriba.</div>';
+    cont.innerHTML = '<div class="hor-vacio">Marca asignaturas como <b>Cursando</b> en la malla o añádelas con el buscador de arriba.</div>' + panelHuecos([], []);
     return;
   }
   const ses = sesionesHorario(items);
@@ -1333,7 +1467,8 @@ function pintarHorario() {
     ${ses.length ? `<div class="hor-semana">
       <div class="cab"></div>${[1, 2, 3, 4, 5, 6].map(d => `<div class="cab">${DIAS_CORTOS[d]}</div>`).join('')}
       <div class="horas">${horas.join('')}</div>${dias}
-    </div>` : ''}`;
+    </div>` : ''}
+    ${panelHuecos(items, ses)}`;
 }
 
 /** Sugerencias del buscador de la pestaña Horario. */
@@ -1482,7 +1617,30 @@ function init() {
     if (quitarHor) {
       S.horario.extras = S.horario.extras.filter(c => c !== quitarHor.dataset.quitarHor);
       guardar(); pintarHorario();
+      return;
     }
+    const hueco = e.target.closest('[data-hueco]');
+    if (hueco) {
+      // "cod|actividad=grupo;actividad=grupo": añade la asignatura y deja elegidos esos grupos.
+      const [cod, grupos] = hueco.dataset.hueco.split('|');
+      const yaEnPlan = PLAN.some(a => est(a.id) === 'cursando' && codBase(codDe(a)) === cod);
+      if (!yaEnPlan && !S.horario.extras.includes(cod)) S.horario.extras.push(cod);
+      for (const par of (grupos || '').split(';').filter(Boolean)) {
+        const i = par.lastIndexOf('='); S.horario.grupos[cod + '|' + par.slice(0, i)] = par.slice(i + 1);
+      }
+      guardar(); pintarHorario();
+      avisar('Añadida al horario con el grupo que cabe.');
+      return;
+    }
+    if (e.target.closest('[data-hueco-mas]')) { HUECOS.limite += 30; pintarHorario(); }
+  });
+  document.addEventListener('change', e => {
+    const f = e.target.closest('[data-hueco-f]');
+    if (!f) return;
+    const k = f.dataset.huecoF;
+    HUECOS[k] = f.type === 'checkbox' ? f.checked : f.value;
+    HUECOS.limite = 30;
+    pintarHorario();
   });
   document.addEventListener('change', e => {
     const sel = e.target.closest('select[data-grupo]');

@@ -23,7 +23,7 @@ exportarlo e importarlo como `.json`.
 | **Plan sugerido** | Genera semestre a semestre lo que queda, con tope de créditos configurable. |
 | **Optativas** | Las 18 optativas de fundamentación y las 44 disciplinares del plan según el SIA, con créditos reales y descripción, agrupadas por tema (botánica, zoología, ecología…). Búsqueda por tema dentro de las descripciones. |
 | **Electivas** | Las 241 asignaturas de **libre elección** del componente 2CLE de la sede, con créditos y descripción. |
-| **Horario** | Arma el horario del semestre con la **oferta real del SIA**: grupos, profesores, salones y cupos. Entran solas las asignaturas marcadas *cursando*; puedes añadir cualquier otra. Eliges grupo y la semana se pinta con los cruces en rojo. |
+| **Horario** | Arma el horario del semestre con la **oferta real del SIA**: grupos, profesores, salones y cupos. Entran solas las asignaturas marcadas *cursando*; puedes añadir cualquier otra. Eliges grupo y la semana se pinta con los cruces en rojo. **¿Qué cabe en mis huecos?** busca en toda la oferta los grupos que no se cruzan con tu horario (obligatorias del plan disponibles, optativas del catálogo y libre elección), con filtros de tipo, créditos y cupos, y los añade con un clic. |
 | **Notas y fuentes** | De dónde sale cada dato y qué falta por confirmar. |
 
 ## Estado de los datos (léelo)
