@@ -33,14 +33,15 @@ exportarlo e importarlo como `.json`.
   discrepancia de nombre).
 - **Semestres y cupos**: de la malla oficial de la Facultad de Ciencias (`mallabiologia1.pdf`,
   `mallabiologia2.pdf`, que son el mismo diagrama).
-- **Prerrequisitos y correquisitos: PENDIENTES.** La malla oficial no los trae; están en el
-  acuerdo del plan de estudios (régimen legal de la UNAL, documento 90037), que exige resolver un
-  captcha para descargarlo. Mientras tanto la app trata todo como disponible salvo la cadena de
-  inglés. Cuando tengas el acuerdo, los prerrequisitos van en el campo `pre` de cada asignatura en
-  [js/datos.js](js/datos.js).
-- **Créditos por componente**: fundamentación obligatoria 60 y trabajo de grado 8 están
-  verificados; fundamentación optativa 8, disciplinar 55 y libre elección 32 salen de la
-  distribución publicada (68 / 63 / 32 = 163) y hay que confirmarlos con el acuerdo.
+- **Prerrequisitos y correquisitos**: del acuerdo del plan de estudios (régimen legal de la
+  UNAL, documento 90037), transcritos de sus tablas: fundamentación, optativas de fundamentación
+  y disciplinares. Las optativas del catálogo llevan los suyos, y **el cupo al que se asignen los
+  hereda** (p. ej. Vertebrados exige Biología animal y evolutiva; Gestión de proyectos exige toda
+  la fundamentación). Las optativas que el SIA ofrece hoy pero no aparecen en el acuerdo van sin
+  requisito porque no se conoce (lista en *Notas y fuentes*).
+- **Créditos por componente**: fundamentación obligatoria 60 y optativa 8 según el acuerdo;
+  trabajo de grado 8 según el SIA; disciplinar 55 y libre elección 32 según la distribución
+  publicada (68 / 63 / 32 = 163).
 - **Profesores y reseñas**: `js/losestudiantes.js` solo trae el enlace de cada materia; la lista
   de profesores y reseñas necesita `sincronizar-profesores.js` con Chrome headless.
 
@@ -92,7 +93,7 @@ autocontenidos para abrir desde cualquier dispositivo.
 
 - **Malla Curricular Programa de Pregrado en Biología** — Facultad de Ciencias, UNAL Sede Bogotá.
 - **Catálogo de asignaturas del SIA** — códigos, créditos, tipologías y oferta del semestre.
-- **Acuerdo del plan de estudios** (régimen legal UNAL, doc. 90037) — pendiente de cargar.
+- **Acuerdo del plan de estudios** (régimen legal UNAL, doc. 90037) — prerrequisitos, correquisitos y créditos por agrupación.
 - **losestudiantes.com** — verificación de códigos y enlaces a profesores.
 
 **Confirma siempre en el SIA antes de inscribir.**

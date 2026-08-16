@@ -57,8 +57,20 @@ function construirPlan() {
       c.pre = (c.pre || []).filter(p => !fuera.has(p));
       c.co = (c.co || []).filter(p => !fuera.has(p));
       c.preSug = (c.preSug || []).filter(p => !fuera.has(p));
+      /* Si es un cupo con una optativa asignada y el catálogo conoce los
+         requisitos de esa optativa, el cupo los hereda. */
+      const asig = c.ranura && S.ranuras[c.id];
+      const opt = asig && asig.cod && CATALOGO.find(o => o.cod === asig.cod && (o.pre || o.preEsp || o.preFund));
+      if (opt) {
+        c.pre = [...new Set([...c.pre, ...(opt.pre || []).filter(p => !fuera.has(p))])];
+        if (opt.preEsp) c.preEsp = opt.preEsp;
+        if (opt.preFund) c.preFund = true;
+      }
       return c;
     });
+  // Prerrequisitos heredados que apunten a asignaturas fuera del plan se descartan.
+  const enPlan = new Set(arr.map(a => a.id));
+  for (const c of arr) c.pre = c.pre.filter(p => enPlan.has(p));
 
   // Orden explícito (arrastrar y soltar); las nuevas van al final de su semestre.
   if (m.orden && m.orden.length) {
@@ -97,9 +109,11 @@ function setAprobadas() {
  * Solo Trabajo de Grado lo tiene de forma evaluable.
  */
 function cumplePreEspecial(a, hechas) {
-  if (a.comp !== 'TG') return true;
+  // Trabajo de grado, y cualquier asignatura marcada con preFund, exigen toda la
+  // fundamentación (y la disciplinar obligatoria, si la carrera la tiene).
+  if (a.comp !== 'TG' && !a.preFund) return true;
   return PLAN.every(x =>
-    x.comp === 'TG' ||
+    x.comp === 'TG' || x.id === a.id ||
     !['FO', 'FP', 'DO'].includes(x.comp) ||
     hechas.has(x.id));
 }
@@ -1355,6 +1369,7 @@ function irA(id) {
 }
 
 function refrescar() {
+  construirPlan();   // los cupos heredan requisitos de la optativa asignada
   pintarMalla();
   pintarResumen();
   if (!$('#vPlan').hidden) pintarPlan();

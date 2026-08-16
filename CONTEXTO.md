@@ -33,13 +33,13 @@ las 44 disciplinares del SIA son todas optativas.
 
 ## Lo que falta y de dónde sale
 
-**Los prerrequisitos.** No están en la malla oficial ni en el SIA. Están en el acuerdo del plan
-(régimen legal UNAL, `https://legal.unal.edu.co/rlunal/home/doc.jsp?d_i=90037`, «modifica el plan
-de estudios de Biología y deroga el Acuerdo 063 de 2015 del CFC»), que exige un reCAPTCHA: hay que
-abrirlo en el navegador, resolverlo y guardar el texto/PDF (p. ej. en `datos/`). Luego se cargan en
-`pre`/`co` de `js/datos.js`, se confirman los créditos por componente y se quita la primera nota de
-`INCONSISTENCIAS`. Otras fuentes probadas sin éxito: PDF de diracad (es la misma malla), página de
-la Facultad (solo créditos totales), scribd (503).
+**Prerrequisitos: cargados el 2026-08-16** desde capturas de las tablas del acuerdo del plan
+(régimen legal UNAL doc. 90037; el sitio exige reCAPTCHA, la persona usuaria pasó las imágenes).
+Fundamentación completa; optativas de fundamentación y disciplinares llevan `pre`/`preEsp`/`preFund`
+en `CATALOGO` y el cupo asignado los hereda (`construirPlan`). Créditos exigidos por agrupación:
+Biología 30, Mat. y Estadística 7, Química 16, Física 4, C. de la tierra 3, Opt. fundamentación 8;
+el total disciplinar quedó fuera de las capturas. Diferencias acuerdo ↔ SIA anotadas en
+`INCONSISTENCIAS` (varias optativas del SIA no están en el acuerdo → sin `pre`).
 
 **Profesores.** `sincronizar-profesores.js` necesita Chrome headless (aquí faltan libnss3/libasound2
 y no hay sudo). `verificar-losestudiantes.js` sí corrió: 76/87 códigos existen allí, sin

@@ -296,7 +296,20 @@ chk(m.total.meta === 163, 'la meta son 163 créditos');
 chk(m.comp.FO.plan === 60 && m.comp.TG.plan === 8, 'fundamentación obligatoria 60 y trabajo de grado 8 (verificados con el SIA)');
 chk(m.comp.NV.plan === 12 + 0, 'los 12 créditos de inglés van en nivelación');
 $('[data-vista="vNotas"]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
-chk($('#notasCont').textContent.includes('Prerrequisitos y correquisitos: pendientes'), 'las notas avisan que faltan los prerrequisitos del acuerdo');
+chk($('#notasCont').textContent.includes('del acuerdo del plan'), 'las notas explican de dónde salen los prerrequisitos');
+// requisitos del acuerdo cargados
+chk(w.__api.PLAN_POR_ID['2017779'].pre.includes('2017775'), 'Genética exige Biología molecular de la célula');
+chk(w.__api.PLAN_POR_ID['1000025'].co.includes('1000024'), 'el laboratorio de química es correquisito de Principios de química');
+// un cupo hereda los requisitos de la optativa asignada
+w.__api.S.estado = {}; w.__api.S.ranuras = { 'DISC_5_1': { cod: '2017519', nombre: 'Vertebrados', cr: 4 } }; w.__api.guardar(); w.__api.refrescar();
+chk(w.__api.PLAN_POR_ID['DISC_5_1'].pre.includes('2017772') && w.__api.PLAN_POR_ID['DISC_5_1'].pre.includes('2017774'), 'el cupo con Vertebrados hereda sus prerrequisitos (Biología animal y evolutiva)');
+$('[data-vista="vMalla"]').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+chk([...$$('#malla .card')].find(c => c.dataset.id === 'DISC_5_1').classList.contains('bloqueada'), 'y aparece bloqueado hasta aprobarlos');
+w.__api.S.ranuras = { 'DISC_6_1': { cod: '2017540', nombre: 'Gestión de proyectos', cr: 4 } }; w.__api.guardar(); w.__api.refrescar();
+chk([...$$('#malla .card')].find(c => c.dataset.id === 'DISC_6_1').classList.contains('bloqueada'), 'Gestión de proyectos exige toda la fundamentación');
+w.__api.PLAN.filter(a => ['FO', 'FP'].includes(a.comp)).forEach(a => { w.__api.S.estado[a.id] = 'aprobada'; }); w.__api.guardar(); w.__api.refrescar();
+chk([...$$('#malla .card')].find(c => c.dataset.id === 'DISC_6_1').classList.contains('disponible'), 'y se desbloquea con la fundamentación aprobada');
+w.__api.S.estado = {}; w.__api.S.ranuras = {}; w.__api.guardar(); w.__api.refrescar();
 
 console.log('\n[V] Horario con la oferta del SIA');
 w.__api.S.estado = {}; w.__api.S.horario = { extras: [], grupos: {} }; w.__api.guardar(); w.__api.refrescar();
